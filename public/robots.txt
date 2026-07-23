@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://kinetic-arcade-scroll.lovable.app/sitemap.xml
