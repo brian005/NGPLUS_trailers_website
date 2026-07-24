@@ -1,0 +1,40 @@
+# Vite SPA on Apache (Namecheap shared hosting)
+# Lives in public/ so every `npm run build` copies it into dist/ automatically
+
+# No directory listings anywhere (replaces the cPanel Indexes toggle,
+# which our scp deploys would clobber on every push)
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # ACME http-01 challenges are served as-is: never redirected, never
+  # rewritten to the SPA. Cert renewals depend on this.
+  RewriteRule ^\.well-known/acme-challenge/ - [L]
+
+  # Force HTTPS at the origin (replaces the cPanel Force HTTPS toggle).
+  # Double guard: only redirect when the connection is not TLS AND no
+  # proxy has already terminated TLS for us (X-Forwarded-Proto) —
+  # loop-proof behind Namecheap's edge layer.
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+  # Never rewrite real files or directories
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  # Everything else falls back to the SPA entry point
+  RewriteRule . /index.html [L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  # Hashed build assets: cache hard, they never change in place
+  <FilesMatch "\.(js|css|woff2?|ttf|png|jpe?g|gif|svg|webp|ico)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  # index.html must always revalidate so new deploys show up immediately
+  <FilesMatch "^index\.html$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
