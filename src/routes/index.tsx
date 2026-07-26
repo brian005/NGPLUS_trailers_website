@@ -55,6 +55,13 @@ function Index() {
   const [started, setStarted] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeVideo, setActiveVideo] = useState<string | null>(null);
+  // Contact form: posts to /api/contact.php (see public/api/contact.php).
+  // Replaced a mailto: handoff, which silently did nothing for any visitor
+  // without a desktop mail client registered for the mailto: scheme.
+  const [formStatus, setFormStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [formError, setFormError] = useState("");
+  // Render time, sent as _t so the endpoint can reject sub-2s submissions.
+  const formRenderedAt = useRef(Date.now());
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const indexRef = useRef(0);
   const startedRef = useRef(false);
@@ -332,41 +339,66 @@ function Index() {
           <TerminalHeader label="Start a Project" prefix="" />
           <p className="mt-6 text-base sm:text-lg text-white/70">Tell us about your game. We'll find the hook.</p>
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              const name = String(fd.get("name") || "");
-              const game = String(fd.get("game") || "");
-              const email = String(fd.get("email") || "");
-              const steam = String(fd.get("steam") || "");
-              const requirements = String(fd.get("requirements") || "");
-              const timeline = String(fd.get("timeline") || "");
-              const subject = `New Project Inquiry: ${game || name || "NG+ Trailers"}`;
-              const body = [
-                `Full Name: ${name}`,
-                `Game Title: ${game}`,
-                `Email: ${email}`,
-                `Steam Link: ${steam}`,
-                `Target Timeline: ${timeline}`,
-                ``,
-                `Project Requirements:`,
-                requirements,
-              ].join("\n");
-              window.location.href = `mailto:hello@ngplustrailers.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+              if (formStatus === "sending") return;
+
+              // Capture the element synchronously: currentTarget is no longer
+              // valid once we await.
+              const form = e.currentTarget;
+              const payload: Record<string, string> = {};
+              new FormData(form).forEach((value, key) => {
+                payload[key] = typeof value === "string" ? value : "";
+              });
+              payload._t = String(formRenderedAt.current);
+
+              setFormError("");
+              setFormStatus("sending");
+
+              try {
+                const res = await fetch("/api/contact.php", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                });
+
+                let ok = res.ok;
+                let message = "";
+                try {
+                  const data = await res.json();
+                  ok = ok && data?.ok === true;
+                  if (typeof data?.error === "string") message = data.error;
+                } catch {
+                  // Not JSON. Usually means the SPA rewrite swallowed the
+                  // request and handed back index.html, i.e. the endpoint
+                  // is not deployed.
+                  ok = false;
+                }
+
+                if (!ok) throw new Error(message || "We could not send that just now.");
+
+                form.reset();
+                formRenderedAt.current = Date.now();
+                setFormStatus("sent");
+              } catch (err) {
+                setFormError(err instanceof Error ? err.message : "We could not send that just now.");
+                setFormStatus("error");
+              }
             }}
             onClick={(e) => e.stopPropagation()}
             className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-6"
           >
-            <Field label="Full Name" name="name" placeholder="your name" />
-            <Field label="Game Title" name="game" placeholder="your game" />
-            <Field label="Email Address" name="email" type="email" placeholder="you@studio.com" />
-            <Field label="Steam Link (Optional)" name="steam" placeholder="store.steampowered.com/..." />
+            <Field label="Full Name" name="name" placeholder="your name" autoComplete="name" />
+            <Field label="Game Title" name="game" placeholder="your game" autoComplete="off" />
+            <Field label="Email Address" name="email" type="email" placeholder="you@studio.com" autoComplete="email" required />
+            <Field label="Steam Link (Optional)" name="steam" placeholder="store.steampowered.com/..." autoComplete="url" />
             <div className="md:col-span-2 flex flex-col gap-2">
               <label htmlFor="requirements" className="font-mono text-[10px] tracking-[0.3em] text-[#00ff41] uppercase">&gt; Project Requirements</label>
               <textarea
                 id="requirements"
                 name="requirements"
                 rows={5}
+                required
                 placeholder="tell us about your game..."
                 className="w-full border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white placeholder:text-white/30 focus:border-[#00ff41] focus:outline-none"
               />
@@ -381,13 +413,39 @@ function Index() {
               </select>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="font-mono text-[10px] tracking-[0.3em] text-transparent uppercase select-none">&gt; Submit</label>
+              {/* Spacer for grid alignment. Was a <label> with no associated
+                  field, which is why Chrome flagged an unlabelled control. */}
+              <span aria-hidden="true" className="font-mono text-[10px] tracking-[0.3em] text-transparent uppercase select-none">&gt; Submit</span>
               <button
                 type="submit"
-                className="w-full bg-[#00ff41] px-4 py-3 font-mono text-sm font-extrabold uppercase tracking-[0.4em] text-[#131313] transition hover:brightness-110 border-glow"
+                disabled={formStatus === "sending"}
+                className="w-full bg-[#00ff41] px-4 py-3 font-mono text-sm font-extrabold uppercase tracking-[0.4em] text-[#131313] transition hover:brightness-110 border-glow disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:brightness-100"
               >
-                ▶ Begin Project
+                {formStatus === "sending" ? "▶ Sending..." : "▶ Begin Project"}
               </button>
+            </div>
+
+            {/* Honeypot. Hidden from people, filled in by form-walking bots;
+                the endpoint drops any submission that has it set. */}
+            <div className="hidden" aria-hidden="true">
+              <label htmlFor="website_url">Leave this field empty</label>
+              <input id="website_url" name="website_url" type="text" tabIndex={-1} autoComplete="off" />
+            </div>
+
+            <div className="md:col-span-2 min-h-[1.5rem]" aria-live="polite">
+              {formStatus === "sent" && (
+                <p className="font-mono text-xs tracking-[0.2em] text-[#00ff41] uppercase">
+                  &gt; Transmission received. We'll be in touch.
+                </p>
+              )}
+              {formStatus === "error" && (
+                <p className="font-mono text-xs tracking-[0.2em] text-red-400">
+                  &gt; {formError}{" "}
+                  <a href="mailto:hello@ngplustrailers.com" className="underline hover:text-[#00ff41]">
+                    email us directly
+                  </a>
+                </p>
+              )}
             </div>
 
           </form>
@@ -449,11 +507,15 @@ function Field({
   name,
   placeholder,
   type = "text",
+  autoComplete,
+  required = false,
 }: {
   label: string;
   name: string;
   placeholder?: string;
   type?: string;
+  autoComplete?: string;
+  required?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -465,6 +527,8 @@ function Field({
         name={name}
         type={type}
         placeholder={placeholder}
+        autoComplete={autoComplete}
+        required={required}
         className="w-full border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white placeholder:text-white/30 focus:border-[#00ff41] focus:outline-none"
       />
     </div>
