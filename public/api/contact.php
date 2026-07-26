@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * public/api/contact.php  v1.1
+ * public/api/contact.php  v1.2
  *
  * Contact-form endpoint for ngplustrailers.com. Accepts a JSON (or
  * form-encoded) POST, appends it to an append-only log OUTSIDE the document
@@ -26,15 +26,21 @@ declare(strict_types=1);
  *   curl -sS -X POST https://ngplustrailers.com/api/contact.php \
  *     -H 'Content-Type: application/json' --data '{"email":"x@y.com","message":"probe"}'
  *
- * CONFIG - all via environment, so this file is drop-in with no edits.
- * Set them in public_html/.htaccess (cPanel honours SetEnv for PHP):
+ * CONFIG - every value has a working default, so this file is drop-in and
+ * needs NO .htaccess change and no edits. To override any of them, add
+ * SetEnv lines to public/.htaccess IN THE REPO (cPanel honours SetEnv for
+ * PHP). Never edit public_html/.htaccess on the server: it is repo-owned and
+ * overwritten on the next deploy.
  *
- *   SetEnv CONTACT_TO        "you@yourdomain.com"
+ *   SetEnv CONTACT_TO        "someone-else@yourdomain.com"
  *   SetEnv CONTACT_FROM      "noreply@ngplustrailers.com"
  *   SetEnv CONTACT_SUBJECT   "NG+ site enquiry"
  *   SetEnv CONTACT_LOG_DIR   "/home/ngplus"
  *   SetEnv CONTACT_RATE_MAX  "10"
  *   SetEnv CONTACT_ORIGINS   "https://ngplustrailers.com,https://www.ngplustrailers.com"
+ *
+ * CONTACT_TO defaults to hello@ngplustrailers.com - the address already
+ * published in the site footer, so nothing secret is baked in here.
  *
  * CONTACT_FROM must be an address ON this domain or the mail is likely to be
  * rejected or spam-filed. The submitter's address goes in Reply-To, never in
@@ -214,7 +220,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     respond(405, ['ok' => false, 'error' => 'Method not allowed.']);
 }
 
-$to        = cfg('CONTACT_TO');
+$to        = cfg('CONTACT_TO', 'hello@ngplustrailers.com');
 $from      = cfg('CONTACT_FROM', 'noreply@' . (string) ($_SERVER['HTTP_HOST'] ?? 'localhost'));
 $subject   = cfg('CONTACT_SUBJECT', 'Website enquiry');
 $logDir    = cfg('CONTACT_LOG_DIR', dirname((string) ($_SERVER['DOCUMENT_ROOT'] ?? __DIR__)));
