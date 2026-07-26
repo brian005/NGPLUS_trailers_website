@@ -1,8 +1,20 @@
 <#
-    deploy.ps1  v2.0
+    deploy.ps1  v3.0
 
-    Builds the site and ships .output/public to ~/public_html on the Namecheap
+    Builds the site and ships dist/client to ~/public_html on the Namecheap
     shared host.
+
+    DEPLOYABLE MOVED (v3.0): nitro is disabled in vite.config.ts, so the build
+    now follows TanStack Start's own defaults - client (plus prerendered
+    index.html and everything copied from public/) lands in dist/client, and
+    the SSR bundle the prerender crawls lands in dist/server. There is no
+    .output any more; one lying around is from the nitro era and is dead.
+
+    CONSISTENCY CHECK (new in v3.0): after the build, every asset filename
+    referenced by index.html is checked against the files actually present in
+    assets/. A mismatch is FATAL. This is the check that would have caught the
+    Jul 25 incident, where a stale prerender emitted HTML referencing assets
+    the build never produced and the deploy shipped it faithfully.
 
     SPLIT PAYLOAD (new in v2.0)
     .output/public is about 790 MB, essentially all of it the videos and
@@ -107,7 +119,7 @@ $remote  = Get-Config 'NGP_REMOTE_DIR' '/home/ngplus/public_html'
 
 $repoRoot = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($repoRoot)) { $repoRoot = (Get-Location).Path }
-$outDir = Join-Path $repoRoot '.output\public'
+$outDir = Join-Path $repoRoot 'dist\client'
 
 Write-Step 'Configuration'
 Write-Host "    host    $sshUser@$sshHost port $sshPort"
@@ -137,6 +149,10 @@ foreach ($tool in @('ssh', 'scp', 'tar')) {
 }
 Write-Ok 'ssh, scp and tar available'
 
+if (Test-Path (Join-Path $repoRoot '.output')) {
+    Write-Warn 'legacy .output directory present (nitro era) - no longer used or deployed; safe to delete'
+}
+
 # ------------------------------------------------------------------- build
 
 if ($SkipBuild) {
@@ -153,6 +169,7 @@ if ($SkipBuild) {
 
 if (-not (Test-Path $outDir)) {
     Write-Bad "$outDir does not exist. Did the build change its output directory?"
+    Write-Bad 'Expected dist\client (nitro disabled). If you see .output instead, vite.config.ts is stale.'
     exit 1
 }
 
@@ -192,6 +209,33 @@ if ($missing.Count -gt 0 -and -not $Force) {
     Write-Host ''
     Write-Bad "$($missing.Count) expected file(s) missing. Re-run with -Force to upload anyway."
     exit 1
+}
+
+# ---------------------------------------------- index/assets consistency
+
+# Every css/js filename index.html references must exist in assets/. A stale
+# prerender referencing assets this build never produced is exactly how the
+# Jul 25 incident shipped; it is FATAL here, -Force does not override it,
+# because uploading an internally inconsistent build is never right.
+Write-Step 'Checking index.html against assets'
+
+$indexPath = Join-Path $outDir 'index.html'
+$refs = @(Select-String -Path $indexPath -Pattern 'assets/[A-Za-z0-9_.-]+\.(css|js)' -AllMatches |
+          ForEach-Object { $_.Matches.Value } |
+          ForEach-Object { ($_ -split '/')[-1] } |
+          Sort-Object -Unique)
+$present = @(Get-ChildItem (Join-Path $outDir 'assets') -Name -ErrorAction SilentlyContinue)
+$danglingRefs = @($refs | Where-Object { $_ -notin $present })
+
+if ($refs.Count -eq 0) {
+    Write-Warn 'index.html references no hashed assets at all - that is unusual; inspect it before trusting this build'
+} elseif ($danglingRefs.Count -gt 0) {
+    Write-Bad "index.html references $($danglingRefs.Count) asset(s) this build did not produce:"
+    foreach ($r in $danglingRefs) { Write-Bad "    $r" }
+    Write-Bad 'The prerender and the client build disagree. Do not deploy this.'
+    exit 1
+} else {
+    Write-Ok "index.html and assets agree ($($refs.Count) referenced, all present)"
 }
 
 # --------------------------------------------------- split code from media
