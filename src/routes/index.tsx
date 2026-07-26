@@ -216,13 +216,18 @@ function Index() {
           <div className="mb-8 font-mono text-sm sm:text-base md:text-lg tracking-[0.4em] text-[#00ff41] glow-green">
             NG+ GAME TRAILERS
           </div>
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold uppercase tracking-tight text-white glow-green">
+          {/* Visual hero line. Deliberately NOT the h1: "PRESS ANY KEY TO
+              BEGIN" tells search engines nothing about what this business
+              does, so the descriptive tagline below carries the h1 instead.
+              Tailwind preflight resets heading font-size/weight/margins, so
+              the tag swap renders pixel-identically. */}
+          <div className="text-4xl sm:text-5xl md:text-6xl font-extrabold uppercase tracking-tight text-white glow-green">
             PRESS ANY KEY TO BEGIN
             <span className="ml-2 inline-block w-4 h-[0.9em] bg-[#00ff41] align-middle animate-blink" />
-          </h1>
-          <p className="mx-auto mt-8 max-w-2xl text-base sm:text-lg text-white/70">
+          </div>
+          <h1 className="mx-auto mt-8 max-w-2xl text-base sm:text-lg text-white/70">
             Next level game trailers for indie teams without the bureaucracy.
-          </p>
+          </h1>
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
               onClick={(e) => { e.stopPropagation(); jump("work"); }}
