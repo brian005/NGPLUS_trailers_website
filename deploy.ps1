@@ -1,26 +1,44 @@
 <#
-    deploy.ps1  v1.2
+    deploy.ps1  v2.0
 
     Builds the site and ships .output/public to ~/public_html on the Namecheap
     shared host.
+
+    SPLIT PAYLOAD (new in v2.0)
+    .output/public is about 790 MB, essentially all of it the videos and
+    images under __l5e. Those change rarely; the code changes constantly.
+    v1.x packed everything every time, so a one-line PHP edit cost a 790 MB
+    upload, and it gzipped the video on the way, which burns CPU for no size
+    win at all.
+
+    So: media is EXCLUDED by default. A routine deploy ships roughly a
+    megabyte. Pass -WithMedia when anything under __l5e has changed, or on a
+    first deploy to a fresh account. The media tarball is not gzipped, because
+    compressing MP4 is a waste of time.
+
+    The safety net for forgetting the flag: the remote step always counts the
+    files actually present under __l5e and prints that next to the local
+    count, so drift is visible. The check rides in the ssh call the script
+    already makes, so it costs no extra password prompt.
 
     WHY TAR AND NOT SCP DIRECTLY
     "scp -r .output\public\* host:dir" silently skips dotfiles, because the
     glob is expanded by the shell and * does not match names beginning with a
     dot. That would omit .htaccess, which owns the https redirect, the
-    directory-index blocking, and the SetEnv config the contact endpoint reads.
-    The deploy would report success and break three things at once. Packing to
-    a tarball with "tar -C dir ." includes dotfiles, uploads in one transfer,
-    and unpacks with the tree intact.
+    directory-index blocking, and the SetEnv config the contact endpoint can
+    read. The deploy would report success and break three things at once.
+    Packing named entries with tar includes dotfiles and unpacks with the tree
+    intact.
 
-    The tarball is written to $env:TEMP, never to Downloads.
+    Tarballs are written to $env:TEMP, never to Downloads, and are removed
+    afterwards.
 
-    NON-DESTRUCTIVE by default: files are unpacked over the top of what is
-    already there. Nothing is deleted, so hash-named assets from previous
-    builds accumulate in public_html/assets over time. Pass -PruneAssets to
-    empty that one directory before unpacking; it is entirely build-owned, so
-    that is safe, whereas a blanket delete of public_html is not (it would
-    take .well-known/acme-challenge with it).
+    NON-DESTRUCTIVE by default: files unpack over the top of what is already
+    there. Nothing is deleted, so hash-named files from previous builds
+    accumulate in public_html/assets. Pass -PruneAssets to empty that one
+    directory before unpacking; it is entirely build-owned, so that is safe,
+    whereas a blanket delete of public_html is not - it would take
+    .well-known/acme-challenge with it, which acme.sh needs at renewal.
 
     CONFIG - environment variables, so this file is drop-in with no edits:
       NGP_SSH_HOST    default 198.54.116.242
@@ -28,27 +46,38 @@
       NGP_SSH_PORT    default 21098
       NGP_REMOTE_DIR  default /home/ngplus/public_html
 
-    USAGE
-      .\deploy.ps1                 build, verify, upload
-      .\deploy.ps1 -SkipBuild      upload the existing .output/public as-is
-      .\deploy.ps1 -DryRun         build and verify, upload nothing
-      .\deploy.ps1 -PruneAssets    clear remote assets/ before unpacking
-      .\deploy.ps1 -Force          upload even if an expected file is missing
+    USAGE - note the execution-policy bypass; an unsigned local .ps1 will not
+    run without it, and files saved from a browser carry mark-of-the-web so a
+    persistent RemoteSigned policy would still need Unblock-File each time.
 
-    You will be prompted for the cPanel password twice, once for scp and once
-    for ssh. Installing an SSH key in ~/.ssh/authorized_keys on the server
-    removes both prompts.
+      powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -DryRun
+      powershell -ExecutionPolicy Bypass -File .\deploy.ps1
+      powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -WithMedia
+      powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -SkipBuild -PruneAssets
+
+    Switches
+      -SkipBuild    upload the existing .output/public without rebuilding
+      -DryRun       build, verify and pack; upload nothing
+      -WithMedia    include __l5e (large; only when media changed)
+      -PruneAssets  clear remote assets/ before unpacking
+      -Force        upload even if an expected file is missing
+
+    One password prompt per transfer plus one for the remote step. An SSH key
+    in ~/.ssh/authorized_keys on the server removes them all.
 #>
 
 [CmdletBinding()]
 param(
     [switch] $SkipBuild,
     [switch] $DryRun,
+    [switch] $WithMedia,
     [switch] $PruneAssets,
     [switch] $Force
 )
 
 $ErrorActionPreference = 'Stop'
+
+$MediaDirName = '__l5e'
 
 function Write-Step { param([string] $Text) Write-Host "==> $Text" -ForegroundColor Cyan }
 function Write-Ok   { param([string] $Text) Write-Host "    OK   $Text" -ForegroundColor Green }
@@ -62,21 +91,33 @@ function Get-Config {
     return $value.Trim()
 }
 
+function Format-Size {
+    param([long] $Bytes)
+    if ($Bytes -ge 1GB) { return "$([math]::Round($Bytes / 1GB, 2)) GB" }
+    if ($Bytes -ge 1MB) { return "$([math]::Round($Bytes / 1MB, 2)) MB" }
+    return "$([math]::Round($Bytes / 1KB, 1)) KB"
+}
+
 # ------------------------------------------------------------------ config
 
-$sshHost  = Get-Config 'NGP_SSH_HOST'   '198.54.116.242'
-$sshUser  = Get-Config 'NGP_SSH_USER'   'ngplus'
-$sshPort  = Get-Config 'NGP_SSH_PORT'   '21098'
-$remote   = Get-Config 'NGP_REMOTE_DIR' '/home/ngplus/public_html'
+$sshHost = Get-Config 'NGP_SSH_HOST'   '198.54.116.242'
+$sshUser = Get-Config 'NGP_SSH_USER'   'ngplus'
+$sshPort = Get-Config 'NGP_SSH_PORT'   '21098'
+$remote  = Get-Config 'NGP_REMOTE_DIR' '/home/ngplus/public_html'
 
 $repoRoot = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($repoRoot)) { $repoRoot = (Get-Location).Path }
-$outDir   = Join-Path $repoRoot '.output\public'
+$outDir = Join-Path $repoRoot '.output\public'
 
 Write-Step 'Configuration'
 Write-Host "    host    $sshUser@$sshHost port $sshPort"
 Write-Host "    remote  $remote"
 Write-Host "    local   $outDir"
+if ($WithMedia) {
+    Write-Host "    media   INCLUDED ($MediaDirName)"
+} else {
+    Write-Host "    media   excluded ($MediaDirName) - pass -WithMedia to send it"
+}
 
 # --------------------------------------------------------------- preflight
 
@@ -115,22 +156,22 @@ if (-not (Test-Path $outDir)) {
     exit 1
 }
 
-# -------------------------------------------------------------- verify out
+# -------------------------------------------------------- verify build out
 
 Write-Step 'Verifying build output'
 
-# index.html is fatal. The rest are warnings: a missing one usually means the
+# index.html is fatal. The rest are warnings: a missing one usually means a
 # source file was never saved into the repo, which is worth seeing before an
 # upload rather than discovering from a 404 afterwards.
 $expected = @(
-    @{ Path = 'index.html';      Fatal = $true  },
-    @{ Path = '.htaccess';       Fatal = $false },
-    @{ Path = 'api\contact.php'; Fatal = $false },
-    @{ Path = 'assets';          Fatal = $false },
-    @{ Path = '__l5e';           Fatal = $false },
-    @{ Path = 'og-image.png';    Fatal = $false },
-    @{ Path = 'robots.txt';      Fatal = $false },
-    @{ Path = 'sitemap.xml';     Fatal = $false }
+    @{ Path = 'index.html';       Fatal = $true  },
+    @{ Path = '.htaccess';        Fatal = $false },
+    @{ Path = 'api\contact.php';  Fatal = $false },
+    @{ Path = 'assets';           Fatal = $false },
+    @{ Path = $MediaDirName;      Fatal = $false },
+    @{ Path = 'og-image.png';     Fatal = $false },
+    @{ Path = 'robots.txt';       Fatal = $false },
+    @{ Path = 'sitemap.xml';      Fatal = $false }
 )
 
 $missing = @()
@@ -153,105 +194,168 @@ if ($missing.Count -gt 0 -and -not $Force) {
     exit 1
 }
 
-# Dotfiles are the whole reason this script exists, so say what was found.
-$dotfiles = @(Get-ChildItem -Path $outDir -Force -File |
-              Where-Object { $_.Name.StartsWith('.') } |
-              ForEach-Object { $_.Name })
+# --------------------------------------------------- split code from media
+
+$mediaPath  = Join-Path $outDir $MediaDirName
+$mediaFiles = @()
+$mediaBytes = 0
+if (Test-Path $mediaPath) {
+    $mediaFiles = @(Get-ChildItem -Path $mediaPath -Force -Recurse -File)
+    if ($mediaFiles.Count -gt 0) {
+        $mediaBytes = ($mediaFiles | Measure-Object -Property Length -Sum).Sum
+    }
+}
+$mediaCount = $mediaFiles.Count
+
+# Top-level entries, dotfiles included. Named explicitly so tar cannot miss a
+# dotfile and so excluding one directory needs no fragile glob pattern.
+$topLevel  = @(Get-ChildItem -Path $outDir -Force | ForEach-Object { $_.Name })
+$codeNames = @($topLevel | Where-Object { $_ -ne $MediaDirName })
+
+if ($codeNames.Count -eq 0) {
+    Write-Bad 'Nothing to deploy: no entries outside the media directory.'
+    exit 1
+}
+
+$codeBytes = 0
+foreach ($n in $codeNames) {
+    $p = Join-Path $outDir $n
+    if (Test-Path $p -PathType Container) {
+        $kids = @(Get-ChildItem -Path $p -Force -Recurse -File)
+        if ($kids.Count -gt 0) {
+            $codeBytes += ($kids | Measure-Object -Property Length -Sum).Sum
+        }
+    } else {
+        $codeBytes += (Get-Item $p -Force).Length
+    }
+}
+
+$dotfiles = @($topLevel | Where-Object { $_.StartsWith('.') })
 if ($dotfiles.Count -gt 0) {
     Write-Ok "dotfiles to ship: $($dotfiles -join ', ')"
 } else {
     Write-Warn 'no dotfiles in the build output (expected .htaccess)'
 }
 
-$fileCount = @(Get-ChildItem -Path $outDir -Force -Recurse -File).Count
-Write-Host "    $fileCount file(s) total"
+Write-Host "    code    $($codeNames.Count) entries, $(Format-Size $codeBytes)"
+Write-Host "    media   $mediaCount files, $(Format-Size $mediaBytes)"
 
 # ------------------------------------------------------------------ package
 
-$stamp   = Get-Date -Format 'yyyyMMdd-HHmmss'
-$tarName = "ngplus-deploy-$stamp.tar.gz"
-$tarPath = Join-Path $env:TEMP $tarName
+$stamp     = Get-Date -Format 'yyyyMMdd-HHmmss'
+$codeTar   = Join-Path $env:TEMP "ngplus-code-$stamp.tar.gz"
+$mediaTar  = Join-Path $env:TEMP "ngplus-media-$stamp.tar"
+$madeMedia = $false
 
-Write-Step 'Packing'
-tar -czf $tarPath -C $outDir .
+Write-Step 'Packing code'
+tar -czf $codeTar -C $outDir $codeNames
 if ($LASTEXITCODE -ne 0) {
-    Write-Bad "tar exited $LASTEXITCODE"
+    Write-Bad "tar exited $LASTEXITCODE packing code"
     exit 1
 }
-$sizeKb = [math]::Round((Get-Item $tarPath).Length / 1KB, 1)
-Write-Ok "$tarName ($sizeKb KB)"
+Write-Ok "$(Split-Path $codeTar -Leaf) ($(Format-Size (Get-Item $codeTar).Length))"
+
+if ($WithMedia -and $mediaCount -gt 0) {
+    Write-Step 'Packing media (no gzip - MP4 does not compress)'
+    tar -cf $mediaTar -C $outDir $MediaDirName
+    if ($LASTEXITCODE -ne 0) {
+        Write-Bad "tar exited $LASTEXITCODE packing media"
+        exit 1
+    }
+    $madeMedia = $true
+    Write-Ok "$(Split-Path $mediaTar -Leaf) ($(Format-Size (Get-Item $mediaTar).Length))"
+} elseif ($WithMedia) {
+    Write-Warn "-WithMedia given but $MediaDirName has no files"
+}
 
 if ($DryRun) {
     Write-Step 'Dry run: nothing uploaded'
-    Write-Host "    tarball left at $tarPath"
+    Write-Host "    code tarball  $codeTar"
+    if ($madeMedia) { Write-Host "    media tarball $mediaTar" }
+    Write-Host '    (these stay in TEMP on a dry run; a real run cleans up after itself)'
     exit 0
 }
 
 # ------------------------------------------------------------------- upload
 
 try {
-    Write-Step 'Uploading (password prompt 1 of 2)'
-    scp -P $sshPort $tarPath "$sshUser@${sshHost}:~/$tarName"
+    $codeName = Split-Path $codeTar -Leaf
+    Write-Step 'Uploading code'
+    scp -P $sshPort $codeTar "$sshUser@${sshHost}:~/$codeName"
     if ($LASTEXITCODE -ne 0) {
-        Write-Bad "scp exited $LASTEXITCODE"
+        Write-Bad "scp exited $LASTEXITCODE uploading code"
         exit 1
     }
-    Write-Ok 'uploaded'
+    Write-Ok 'code uploaded'
 
-    $pruneCmd = ''
-    if ($PruneAssets) {
-        $pruneCmd = "rm -rf '$remote/assets' && "
-        Write-Warn 'assets/ will be cleared before unpacking'
+    $mediaName = $null
+    if ($madeMedia) {
+        $mediaName = Split-Path $mediaTar -Leaf
+        Write-Step "Uploading media ($(Format-Size (Get-Item $mediaTar).Length)) - this will take a while"
+        scp -P $sshPort $mediaTar "$sshUser@${sshHost}:~/$mediaName"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Bad "scp exited $LASTEXITCODE uploading media"
+            exit 1
+        }
+        Write-Ok 'media uploaded'
     }
 
-    # Single remote command so there is only one more password prompt. set -e
-    # so a failed step does not leave the tarball behind looking successful.
-    $remoteScript = @(
-        'set -e',
-        "mkdir -p '$remote'",
-        "$pruneCmd" + "tar -xzf ~/$tarName -C '$remote'",
-        "rm -f ~/$tarName",
-        "echo '--- deployed ---'",
-        "ls -la '$remote' | head -20",
-        "test -f '$remote/api/contact.php' && echo 'api/contact.php present' || echo 'api/contact.php MISSING'",
-        "test -f '$remote/.htaccess' && echo '.htaccess present' || echo '.htaccess MISSING'"
-    ) -join '; '
+    $steps = @('set -e', "mkdir -p '$remote'")
+    if ($PruneAssets) {
+        Write-Warn 'assets/ will be cleared before unpacking'
+        $steps += "rm -rf '$remote/assets'"
+    }
+    $steps += "tar -xzf ~/$codeName -C '$remote'"
+    $steps += "rm -f ~/$codeName"
+    if ($mediaName) {
+        $steps += "tar -xf ~/$mediaName -C '$remote'"
+        $steps += "rm -f ~/$mediaName"
+    }
+    $steps += "echo '--- deployed ---'"
+    $steps += "ls -la '$remote' | head -20"
+    $steps += "test -f '$remote/api/contact.php' && echo 'CHECK api/contact.php present' || echo 'CHECK api/contact.php MISSING'"
+    $steps += "test -f '$remote/.htaccess' && echo 'CHECK .htaccess present' || echo 'CHECK .htaccess MISSING'"
+    # Media drift check rides in this ssh call, so it costs no extra prompt.
+    $steps += "echo -n 'CHECK media files remote: '; find '$remote/$MediaDirName' -type f 2>/dev/null | wc -l"
 
-    Write-Step 'Unpacking on the server (password prompt 2 of 2)'
-    ssh -p $sshPort "$sshUser@$sshHost" $remoteScript
+    Write-Step 'Unpacking on the server'
+    ssh -p $sshPort "$sshUser@$sshHost" ($steps -join '; ')
     if ($LASTEXITCODE -ne 0) {
-        Write-Bad "ssh exited $LASTEXITCODE. The tarball may still be in the home directory."
+        Write-Bad "ssh exited $LASTEXITCODE. A tarball may still be in the remote home directory."
         exit 1
     }
     Write-Ok 'unpacked'
+    Write-Host ''
+    Write-Warn "Local $MediaDirName file count is $mediaCount. If the remote count above differs, re-run with -WithMedia."
 }
 finally {
-    if (Test-Path $tarPath) { Remove-Item $tarPath -Force }
+    foreach ($t in @($codeTar, $mediaTar)) {
+        if ($t -and (Test-Path $t)) { Remove-Item $t -Force }
+    }
 }
 
 # -------------------------------------------------------------- verify live
 
 Write-Step 'Verifying live site'
 
-$apex = 'https://ngplustrailers.com/'
 try {
-    $r = Invoke-WebRequest -Uri $apex -Method Head -TimeoutSec 20 -UseBasicParsing
+    $r = Invoke-WebRequest -Uri 'https://ngplustrailers.com/' -Method Head -TimeoutSec 20 -UseBasicParsing
     Write-Ok "apex $($r.StatusCode) via $($r.Headers['Server'])"
 } catch {
     Write-Warn "apex check failed: $($_.Exception.Message)"
 }
 
-$endpoint = 'https://ngplustrailers.com/api/contact.php'
 try {
     $body = '{"email":"deploy-probe@example.com","requirements":"deploy.ps1 probe"}'
-    $r = Invoke-WebRequest -Uri $endpoint -Method Post -ContentType 'application/json' `
-             -Body $body -TimeoutSec 20 -UseBasicParsing
+    $r = Invoke-WebRequest -Uri 'https://ngplustrailers.com/api/contact.php' -Method Post `
+             -ContentType 'application/json' -Body $body -TimeoutSec 20 -UseBasicParsing
     if ($r.Content -like '*"ok":true*') {
-        Write-Ok "endpoint responded ok (X-Mail-Status: $($r.Headers['X-Mail-Status']))"
+        Write-Ok "endpoint ok (X-Mail-Status: $($r.Headers['X-Mail-Status']))"
     } elseif ($r.Content -like '*<!DOCTYPE html>*') {
         Write-Warn 'endpoint returned HTML: the .htaccess rewrite is swallowing /api/. It needs a !-f guard or an explicit exclusion.'
     } else {
-        Write-Warn "endpoint returned an unexpected body: $($r.Content.Substring(0, [Math]::Min(200, $r.Content.Length)))"
+        $snip = $r.Content.Substring(0, [Math]::Min(200, $r.Content.Length))
+        Write-Warn "endpoint returned an unexpected body: $snip"
     }
 } catch {
     Write-Warn "endpoint check failed: $($_.Exception.Message)"
