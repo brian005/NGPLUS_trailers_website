@@ -2,13 +2,27 @@
 declare(strict_types=1);
 
 /**
- * public/api/contact.php  v1.2
+ * public/api/contact.php  v1.3
  *
  * Contact-form endpoint for ngplustrailers.com. Accepts a JSON (or
  * form-encoded) POST, appends it to an append-only log OUTSIDE the document
  * root, then tries to email it. The log write happens first and on its own:
  * if mail() fails the submission is still captured, so a lead is never lost
  * to an SMTP problem.
+ *
+ * v1.3 (Nov 16 2026):
+ *   - CONTACT_TO now defaults to brian@ngplustrailers.com, a cPanel forwarder
+ *     to Brian's Gmail. Until now it defaulted to hello@ngplustrailers.com,
+ *     which is a separate mailbox on the server with no forward, so every
+ *     form submission since July landed somewhere nobody reads.
+ *   - CONTACT_FROM now defaults to a fixed noreply@ngplustrailers.com instead
+ *     of "noreply@" + the request's Host header. Through www the old default
+ *     produced noreply@www.ngplustrailers.com, a name with no SPF record and
+ *     no DKIM key, so that mail failed DMARC (and the domain's DMARC policy
+ *     is moving to p=quarantine). It also stops a Host header from choosing
+ *     the From domain.
+ *   - cfg() also reads $_SERVER (and the REDIRECT_ copy), so a SetEnv
+ *     override in .htaccess is picked up even where getenv() does not see it.
  *
  * The live form (src/routes/index.tsx) sends: name, game, email, steam,
  * requirements, timeline. All six are forwarded; email is required and
@@ -19,18 +33,20 @@ declare(strict_types=1);
  * means the client can send whatever shape it likes and this does not need
  * to change when the form gains or renames a field.
  *
- * Lives in public/ so Vite copies it into .output/public during build and it
- * ships with the normal scp deploy. It is a real file on disk, so the SPA
- * rewrite in .htaccess passes it through untouched (the standard
- * "RewriteCond %{REQUEST_FILENAME} !-f" guard) - verify with:
+ * Lives in public/ so Vite copies it into dist/client during build and it
+ * ships with deploy.ps1. It is a real file on disk, so the SPA rewrite in
+ * .htaccess passes it through untouched (the standard
+ * "RewriteCond %{REQUEST_FILENAME} !-f" guard) - verify with the command
+ * below. Every probe is a real submission: it is logged and mailed, so it
+ * lands in Gmail (deploy.ps1's own probe does too, as "Website enquiry").
  *   curl -sS -X POST https://ngplustrailers.com/api/contact.php \
  *     -H 'Content-Type: application/json' --data '{"email":"x@y.com","message":"probe"}'
  *
  * CONFIG - every value has a working default, so this file is drop-in and
  * needs NO .htaccess change and no edits. To override any of them, add
- * SetEnv lines to public/.htaccess IN THE REPO (cPanel honours SetEnv for
- * PHP). Never edit public_html/.htaccess on the server: it is repo-owned and
- * overwritten on the next deploy.
+ * SetEnv lines to public/.htaccess IN THE REPO (read through getenv() or
+ * $_SERVER, see cfg()). Never edit public_html/.htaccess on the server: it is
+ * repo-owned and overwritten on the next deploy.
  *
  *   SetEnv CONTACT_TO        "someone-else@yourdomain.com"
  *   SetEnv CONTACT_FROM      "noreply@ngplustrailers.com"
@@ -39,11 +55,14 @@ declare(strict_types=1);
  *   SetEnv CONTACT_RATE_MAX  "10"
  *   SetEnv CONTACT_ORIGINS   "https://ngplustrailers.com,https://www.ngplustrailers.com"
  *
- * CONTACT_TO defaults to hello@ngplustrailers.com - the address already
- * published in the site footer, so nothing secret is baked in here.
+ * CONTACT_TO defaults to brian@ngplustrailers.com, which the server forwards
+ * to Brian's Gmail. Not hello@: that is the address published in the site
+ * footer, but it is its own mailbox and nothing forwards it.
  *
- * CONTACT_FROM must be an address ON this domain or the mail is likely to be
- * rejected or spam-filed. The submitter's address goes in Reply-To, never in
+ * CONTACT_FROM must be an address on ngplustrailers.com itself (not a
+ * subdomain such as www) or the mail fails DMARC: the server signs DKIM as
+ * d=ngplustrailers.com, and SPF covers only the bare domain. It is also the
+ * -f envelope sender. The submitter's address goes in Reply-To, never in
  * From.
  *
  * Anti-spam, in order of cheapness: request-size cap, origin check, honeypot
@@ -61,13 +80,24 @@ const RATE_WINDOW_SECS = 3600;
 
 // ------------------------------------------------------------------ helpers
 
+/**
+ * Config value from the environment, else the default. SetEnv values reach
+ * PHP through getenv() on most handlers and through $_SERVER on others (and
+ * as REDIRECT_<NAME> after an internal rewrite), so all three are checked.
+ */
 function cfg(string $name, string $default = ''): string
 {
-    $v = getenv($name);
-    if ($v === false || trim((string) $v) === '') {
-        return $default;
+    $candidates = [
+        getenv($name),
+        $_SERVER[$name] ?? false,
+        $_SERVER['REDIRECT_' . $name] ?? false,
+    ];
+    foreach ($candidates as $v) {
+        if ($v !== false && trim((string) $v) !== '') {
+            return trim((string) $v);
+        }
     }
-    return trim((string) $v);
+    return $default;
 }
 
 /** Emit JSON and stop. */
@@ -220,8 +250,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     respond(405, ['ok' => false, 'error' => 'Method not allowed.']);
 }
 
-$to        = cfg('CONTACT_TO', 'hello@ngplustrailers.com');
-$from      = cfg('CONTACT_FROM', 'noreply@' . (string) ($_SERVER['HTTP_HOST'] ?? 'localhost'));
+$to        = cfg('CONTACT_TO', 'brian@ngplustrailers.com');
+$from      = cfg('CONTACT_FROM', 'noreply@ngplustrailers.com');
 $subject   = cfg('CONTACT_SUBJECT', 'Website enquiry');
 $logDir    = cfg('CONTACT_LOG_DIR', dirname((string) ($_SERVER['DOCUMENT_ROOT'] ?? __DIR__)));
 $rateMax   = (int) cfg('CONTACT_RATE_MAX', '10');
