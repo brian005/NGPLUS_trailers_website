@@ -16,9 +16,10 @@ plumbing (`@lovable.dev/vite-tanstack-config`, the `__l5e` asset-folder naming,
 - Contact form POSTs to `public/api/contact.php` (v1.3; PHP on the host; logs
   every submission to `~/contact-submissions.log` above the docroot, then
   `mail()`s `brian@ngplustrailers.com` From `noreply@ngplustrailers.com`).
-  Before v1.3 (Nov 16 2026) it mailed `hello@`, which nobody reads, so check
-  the log for anything sent before then. Known gap: `CONTACT_ORIGINS` has no
-  default, so the same-origin check is skipped.
+  Before v1.3 (Nov 16 2026) it mailed `hello@`, which nobody reads. The log
+  was checked that day: one real enquiry had come in (Sep 1) and is an HQ
+  task. Known gap: `CONTACT_ORIGINS` has no default, so the same-origin check
+  is skipped.
 - Static assets are referenced through `src/assets/*.asset.json` files whose
   `url` points under `public/__l5e/assets-v1/<uuid>/<file>`. To swap an asset,
   change the JSON (and the file), not the TSX.
