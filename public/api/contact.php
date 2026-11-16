@@ -13,14 +13,14 @@ declare(strict_types=1);
  * v1.3 (Nov 16 2026):
  *   - CONTACT_TO now defaults to brian@ngplustrailers.com, a cPanel forwarder
  *     to Brian's Gmail. Until now it defaulted to hello@ngplustrailers.com,
- *     which is a separate mailbox on the server with no forward, so every
- *     form submission since July landed somewhere nobody reads.
+ *     a separate mailbox that nothing forwarded at the time, so every form
+ *     submission since July landed somewhere nobody read.
  *   - CONTACT_FROM now defaults to a fixed noreply@ngplustrailers.com instead
  *     of "noreply@" + the request's Host header. Through www the old default
  *     produced noreply@www.ngplustrailers.com, a name with no SPF record and
  *     no DKIM key, so that mail failed DMARC (and the domain's DMARC policy
- *     is moving to p=quarantine). It also stops a Host header from choosing
- *     the From domain.
+ *     has been p=quarantine since Nov 16). It also stops a Host header from
+ *     choosing the From domain.
  *   - cfg() also reads $_SERVER (and the REDIRECT_ copy), so a SetEnv
  *     override in .htaccess is picked up even where getenv() does not see it.
  *
@@ -56,8 +56,9 @@ declare(strict_types=1);
  *   SetEnv CONTACT_ORIGINS   "https://ngplustrailers.com,https://www.ngplustrailers.com"
  *
  * CONTACT_TO defaults to brian@ngplustrailers.com, which the server forwards
- * to Brian's Gmail. Not hello@: that is the address published in the site
- * footer, but it is its own mailbox and nothing forwards it.
+ * to Brian's Gmail. hello@ (the address in the site footer) is its own
+ * mailbox and has forwarded to the same Gmail only since Nov 16, so the form
+ * mails brian@ directly.
  *
  * CONTACT_FROM must be an address on ngplustrailers.com itself (not a
  * subdomain such as www) or the mail fails DMARC: the server signs DKIM as

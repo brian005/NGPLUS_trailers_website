@@ -16,10 +16,10 @@ plumbing (`@lovable.dev/vite-tanstack-config`, the `__l5e` asset-folder naming,
 - Contact form POSTs to `public/api/contact.php` (v1.3; PHP on the host; logs
   every submission to `~/contact-submissions.log` above the docroot, then
   `mail()`s `brian@ngplustrailers.com` From `noreply@ngplustrailers.com`).
-  Before v1.3 (Nov 16 2026) it mailed `hello@`, which nobody reads. The log
-  was checked that day: one real enquiry had come in (Sep 1) and is an HQ
-  task. Known gap: `CONTACT_ORIGINS` has no default, so the same-origin check
-  is skipped.
+  Before v1.3 (Nov 16 2026) it mailed `hello@`, which nobody read until it was
+  forwarded that same day. The log was checked: one real enquiry had come in
+  (Sep 1) and is an HQ task. Known gap: `CONTACT_ORIGINS` has no default, so
+  the same-origin check is skipped.
 - Static assets are referenced through `src/assets/*.asset.json` files whose
   `url` points under `public/__l5e/assets-v1/<uuid>/<file>`. To swap an asset,
   change the JSON (and the file), not the TSX.
@@ -51,12 +51,14 @@ plumbing (`@lovable.dev/vite-tanstack-config`, the `__l5e` asset-folder naming,
 ## Mail (cPanel on server233, records in Namecheap Advanced DNS)
 
 - MX `server233.web-hosting.com`; SPF `v=spf1 include:spf.web-hosting.com ~all`;
-  DKIM selector `default` (cPanel's key); DMARC TXT at `_dmarc`, aggregate
-  reports to `brian@ngplustrailers.com`. It is cPanel mail on the hosting
-  server, not Namecheap Private Email.
+  DKIM selector `default` (cPanel's key); DMARC TXT at `_dmarc` is
+  `p=quarantine` (since Nov 16 2026), aggregate reports to
+  `brian@ngplustrailers.com`. It is cPanel mail on the hosting server, not
+  Namecheap Private Email.
 - `brian@` is a cPanel forwarder to Brian's Gmail; the server re-signs
-  forwarded mail as `d=ngplustrailers.com`. `hello@` (the footer mailto) is a
-  separate mailbox with no forward. Brian chose to leave it that way (Nov 16).
+  forwarded mail as `d=ngplustrailers.com`. `hello@` (the footer mailto) is its
+  own mailbox and, since Nov 16, also forwards to the same Gmail. The messages
+  from before then are still unread in the mailbox (HQ task).
 - The form's From must stay on the bare domain: `www.ngplustrailers.com` has
   no SPF record and no DKIM key, so a From there fails DMARC.
 - deploy.ps1's probe is a real submission, so every deploy drops a "Website
