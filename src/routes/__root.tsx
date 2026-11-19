@@ -11,7 +11,93 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import faviconAsset from "../assets/favicon.png.asset.json";
+import ngLogoAsset from "../assets/ngplus_logo.png.asset.json";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+
+// ---------------------------------------------------------------------------
+// Site identity. One brand name everywhere: "NG+ Game Trailers". "NG+" alone
+// reads as New Game Plus and "Trailers" alone as the towing kind, so the full
+// name carries "Game" every time. Other spellings people use go in
+// alternateName below rather than in visible copy.
+// ---------------------------------------------------------------------------
+const SITE_URL = "https://ngplustrailers.com";
+const SITE_NAME = "NG+ Game Trailers";
+const PAGE_TITLE = "NG+ Game Trailers | Indie Game Trailer Studio in Vancouver";
+const SOCIAL_TITLE = "NG+ Game Trailers — Take Your Game To The Next Level";
+const DESCRIPTION =
+  "Vancouver trailer studio for indie games: Steam page trailers, reveal and launch trailers, festival cuts and publisher pitch videos.";
+
+// Same five services and copy as the Services grid in src/routes/index.tsx
+// (names spelled out in full here). Change both or neither.
+const SERVICES = [
+  {
+    name: "Steam Page Trailers",
+    description: "Optimized for the “scroll-and-watch” behavior of Steam users.",
+  },
+  {
+    name: "Reveal & Launch Trailers",
+    description: "High-impact pieces designed to get attention and drive wishlists/sales.",
+  },
+  {
+    name: "Festival Cuts",
+    description: "Snappy edits for showcase Steam events and seasonal fests.",
+  },
+  {
+    name: "Publisher Pitch Videos",
+    description: "Videos that prove your mechanics, loop, and market viability.",
+  },
+  {
+    name: "Trailer Strategy",
+    description: "Analysis of your game's hooks and the best way to frame them.",
+  },
+];
+
+// No price in here on purpose: publishing the starting price is still an
+// open decision. Add an Offer price only once it is on the visible page too.
+const ORGANIZATION_LD = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": `${SITE_URL}/#organization`,
+  name: SITE_NAME,
+  alternateName: ["NG+ Trailers", "NG Plus Game Trailers"],
+  url: `${SITE_URL}/`,
+  logo: `${SITE_URL}${ngLogoAsset.url}`,
+  email: "hello@ngplustrailers.com",
+  description:
+    "Vancouver-based trailer studio making Steam page trailers, reveal and launch trailers, festival cuts and publisher pitch videos for indie game developers.",
+  address: {
+    "@type": "PostalAddress",
+    addressLocality: "Vancouver",
+    addressRegion: "BC",
+    addressCountry: "CA",
+  },
+  areaServed: "Worldwide",
+  knowsAbout: ["Game trailers", "Steam page trailers", "Steam festivals", "Indie game marketing"],
+  hasOfferCatalog: {
+    "@type": "OfferCatalog",
+    name: "Game trailer services",
+    itemListElement: SERVICES.map((s) => ({
+      "@type": "Offer",
+      itemOffered: {
+        "@type": "Service",
+        name: s.name,
+        description: s.description,
+        serviceType: "Video production",
+        provider: { "@id": `${SITE_URL}/#organization` },
+      },
+    })),
+  },
+};
+
+const WEBSITE_LD = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "@id": `${SITE_URL}/#website`,
+  name: SITE_NAME,
+  alternateName: "NG+ Trailers",
+  url: `${SITE_URL}/`,
+  publisher: { "@id": `${SITE_URL}/#organization` },
+};
 
 function NotFoundComponent() {
   return (
@@ -79,18 +165,22 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "google-site-verification", content: "ldG_V-Xc_lfjubLILrxyYxvmrjc951klmz4jeM9cpn0" },
-      { title: "NG+ TRAILERS — Take Your Game To The Next Level" },
-      { name: "description", content: "Game trailers for solo devs and indie teams looking to get their game to the next level." },
-      { property: "og:title", content: "NG+ TRAILERS — Take Your Game To The Next Level" },
-      { property: "og:description", content: "Game trailers for solo devs and indie teams looking to get their game to the next level." },
+      { title: PAGE_TITLE },
+      { name: "description", content: DESCRIPTION },
+      { property: "og:site_name", content: SITE_NAME },
+      { property: "og:title", content: SOCIAL_TITLE },
+      { property: "og:description", content: DESCRIPTION },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "NG+ TRAILERS — Take Your Game To The Next Level" },
-      { name: "twitter:description", content: "Game trailers for solo devs and indie teams looking to get their game to the next level." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/46b84096-a3dc-41ac-856e-f2ce7c01a258/id-preview-48202dce--b7d39e7f-c3a9-4c0b-95ce-e11771af2322.lovable.app-1781739272712.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/46b84096-a3dc-41ac-856e-f2ce7c01a258/id-preview-48202dce--b7d39e7f-c3a9-4c0b-95ce-e11771af2322.lovable.app-1781739272712.png" },
+      { name: "twitter:title", content: SOCIAL_TITLE },
+      { name: "twitter:description", content: DESCRIPTION },
+      { property: "og:url", content: `${SITE_URL}/` },
+      { property: "og:image", content: `${SITE_URL}/og-image.png` },
+      { name: "twitter:image", content: `${SITE_URL}/og-image.png` },
+      { name: "twitter:image:alt", content: "NG+ Game Trailers — indie game trailer studio" },
     ],
     links: [
+      { rel: "canonical", href: `${SITE_URL}/` },
       { rel: "icon", type: "image/png", href: faviconAsset.url },
       { rel: "apple-touch-icon", href: faviconAsset.url },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -101,31 +191,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     scripts: [
       {
         type: "application/ld+json",
-        children: JSON.stringify({
-          "@context": "https://schema.org",
-          "@type": "Organization",
-          name: "NG+ Game Trailers",
-          url: "https://kinetic-arcade-scroll.lovable.app",
-          description: "Boutique trailer studio crafting high-impact game trailers for solo devs and indie teams.",
-          areaServed: "Worldwide",
-          makesOffer: {
-            "@type": "Offer",
-            itemOffered: {
-              "@type": "Service",
-              name: "Game Trailer Production",
-              serviceType: "Video Production",
-            },
-          },
-        }),
+        children: JSON.stringify(ORGANIZATION_LD),
       },
       {
         type: "application/ld+json",
-        children: JSON.stringify({
-          "@context": "https://schema.org",
-          "@type": "WebSite",
-          name: "NG+ Game Trailers",
-          url: "https://kinetic-arcade-scroll.lovable.app",
-        }),
+        children: JSON.stringify(WEBSITE_LD),
       },
     ],
   }),

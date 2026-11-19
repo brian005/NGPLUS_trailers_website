@@ -77,3 +77,10 @@
 .animate-pulse-green { animation: pulse-green 1.6s ease-in-out infinite; }
 .animate-bounce-down { animation: bounce-down 1.8s ease-in-out infinite; }
 .animate-blink { animation: blink 1s steps(2) infinite; }
+
+/* Decorative terminal flavor text ("PRESS ANY KEY TO BEGIN", "SYSTEM STANDBY",
+   "> OUR_WORK_SELECTED", the trailer-type tags). The words live in a data-text
+   attribute and CSS draws them, so people see exactly the same page while
+   crawlers and AI agents, which read the HTML text, get only the real content.
+   Every element using this class also carries aria-hidden="true". */
+.deco-text::before { content: attr(data-text); }

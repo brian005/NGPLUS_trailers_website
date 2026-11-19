@@ -11,8 +11,19 @@ plumbing (`@lovable.dev/vite-tanstack-config`, the `__l5e` asset-folder naming,
 - TanStack Start (React) on Vite via `@lovable.dev/vite-tanstack-config`,
   Tailwind, shadcn/ui components in `src/components/ui/`.
 - Single route: `src/routes/index.tsx` (hero, work grid + video modal, services,
-  about, contact form). `<head>` metadata (og/twitter/JSON-LD) lives in the
-  `head()` of `src/routes/__root.tsx`.
+  about, contact form). `<head>` metadata (title, description, og/twitter,
+  Organization + WebSite JSON-LD) lives in the `head()` of
+  `src/routes/__root.tsx`, driven by the site-identity constants at the top of
+  that file.
+- The Services copy exists twice on purpose: the grid in `index.tsx` and
+  `SERVICES` in `__root.tsx` (feeds the JSON-LD). Change both or neither.
+- Decorative terminal flavor text ("PRESS ANY KEY TO BEGIN", "SYSTEM STANDBY",
+  `> OUR_WORK_SELECTED`, the LAUNCH_TRAILER-style tags) is drawn by CSS from a
+  `data-text` attribute (`.deco-text` in `src/styles.css`) with
+  `aria-hidden="true"`. People see the same page; crawlers and AI agents read
+  only the real content. Any new flavor text goes on that pattern. Where a tag
+  carries a fact (trailer type), the same fact is in plain words inside the h3
+  as an `sr-only` span (`kind` next to `tag` in the work array; keep in step).
 - Contact form POSTs to `public/api/contact.php` (v1.3; PHP on the host; logs
   every submission to `~/contact-submissions.log` above the docroot, then
   `mail()`s `brian@ngplustrailers.com` From `noreply@ngplustrailers.com`).
@@ -47,6 +58,10 @@ plumbing (`@lovable.dev/vite-tanstack-config`, the `__l5e` asset-folder naming,
   edited live. It carries: `Options -Indexes`, the X-Forwarded-Proto-guarded
   https 301, the acme-challenge exemption, SPA fallback, and immutable caching
   for hashed assets + versioned video.
+- Claude can verify a build in its own container (npm install + build on a
+  copy). The Lovable config binds the prerender preview server to `::`, which
+  fails in an IPv6-less sandbox; use a container-only config that adds
+  `vite: { preview: { host: "127.0.0.1" } }`. Never ship that config.
 
 ## Mail (cPanel on server233, records in Namecheap Advanced DNS)
 
@@ -96,6 +111,49 @@ plumbing (`@lovable.dev/vite-tanstack-config`, the `__l5e` asset-folder naming,
   MP4. If buffering comes back at these bitrates, the next step is adaptive HLS
   off-box (Bunny Stream ≈ $1/mo), not a higher bitrate here.
 
+## AI search visibility (started Nov 18 2026)
+
+- Goal: get the site returned by AI tools for "make a game trailer" and
+  "Steam trends" questions. Where they look: Claude's web search runs on Brave
+  (which only crawls what Googlebot can), ChatGPT search leans heavily on
+  Bing's index plus OpenAI's own crawler, Gemini/AI Overviews on Google.
+- AI crawlers do not run JavaScript. This site is prerendered, so they read the
+  full text — keep it that way: every page must prerender, and no content may
+  depend on client-side JS.
+- On-site brand name is "NG+ Game Trailers" everywhere (title, footer, JSON-LD,
+  llms.txt); `alternateName` carries "NG+ Trailers" and "NG Plus Game
+  Trailers". Chosen Nov 18 2026 as the default (Brian's question went
+  unanswered; he okayed proceeding). His email signature says "NG+ Trailers".
+- Decided against bot-only / agent-only page versions (the Akamai + Scrunch
+  user-agent approach): Google and Bing reps warn it may count as cloaking, and
+  this page is already light server-rendered HTML. If ever wanted, the safe
+  form is `Accept: text/markdown` content negotiation serving the same content
+  with `Vary: Accept`, and only after testing that the APISIX edge (which
+  caches apex HTML) respects Vary.
+- `public/llms.txt` is kept because it is free, but it is not a lever: almost
+  no AI search system requests it.
+- Bot baseline, raw logs late Oct to Nov 18 2026 (891 log lines in Oct, 21,760
+  in Nov), requests per bot: googlebot 101, oai-searchbot 78, gptbot 44,
+  claude-user 17 (mostly Claude chats with Brian), claudebot 15, bingbot 10,
+  claude-searchbot 4, perplexity-user 2, chatgpt-user 2, perplexitybot 1.
+  Reading: crawlers see the site fine; fetches triggered by real users' AI
+  questions are near zero. The bottleneck is content, not access.
+- Re-run the baseline with this (counts matching LINES; counting matches
+  double-counts bots whose user-agent names them twice, e.g. GPTBot):
+
+  ```powershell
+  ssh -p 21098 ngplus@198.54.116.242 'z(){ zcat -f ~/access-logs/* ~/logs/*ngplustrailers* 2>/dev/null; }; echo LOG LINES BY MONTH; z | grep HTTP | cut -d[ -f2 | cut -d/ -f2,3 | cut -d: -f1 | sort -t/ -k2n -k1M | uniq -c; echo BOT REQUESTS; for b in googlebot gptbot oai-searchbot chatgpt-user claudebot claude-user claude-searchbot perplexitybot perplexity-user bingbot; do echo $(z | grep -ci $b) $b; done | sort -rn'
+  ```
+
+- Nov 18 2026 homepage pass (build-verified in the container: prerender OK,
+  JSON-LD valid, consistency gate clean, full-page screenshots pixel-identical
+  to the previous build except the new About line): keyword-bearing title and
+  description, og:site_name, Organization JSON-LD with Vancouver address, logo
+  and the five services as an OfferCatalog, WebSite JSON-LD linked to it,
+  `.deco-text` flavor cleanup, trailer types in plain words, "Based in
+  Vancouver, Canada. Working with indie teams worldwide." in About, refreshed
+  llms.txt, sitemap lastmod.
+
 ## Conventions
 
 - Deliver COMPLETE files, never diffs or paste-over snippets — every file type,
@@ -124,3 +182,16 @@ plumbing (`@lovable.dev/vite-tanstack-config`, the `__l5e` asset-folder naming,
 - Submit `sitemap.xml` in Search Console (verification token is in `<head>`).
 - Old video masters left on the server after the Nov 6 media deploy can be
   deleted once the edge cache has rolled (see the ssh cleanup in that session).
+- AI visibility, next steps: Bing Webmaster Tools (import from Search Console;
+  its AI Performance report shows Copilot citations) + an IndexNow ping after
+  each deploy; a pricing page (waits on Brian's call on publishing the $5,000
+  starting price — add an Offer price to the JSON-LD only when it is visible on
+  the page); one case-study page per portfolio title (needs Brian's project
+  details); a weekly `/steam-trends` page built from NG+ LeadGen aggregates —
+  totals only, never leads or contacts (waits on Brian's call on publishing
+  them); VideoObject JSON-LD for the four trailers (needs upload dates);
+  `sameAs` profile links in the Organization JSON-LD (needs NG+'s social /
+  YouTube URLs).
+- `src/routes/sitemap.xml.ts` is dead code (a server route, never prerendered,
+  no server at runtime) still pointing at the old lovable.app URL;
+  `public/sitemap.xml` is what is served. Delete it when convenient.

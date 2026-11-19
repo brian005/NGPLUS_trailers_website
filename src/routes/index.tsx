@@ -35,13 +35,22 @@ const SECTIONS = ["work", "services", "about", "contact"] as const;
 
 const VIDEO_SRC = heroVideoAsset.url;
 
+// Decorative terminal flavor ("> OUR_WORK_SELECTED", "PRESS ANY KEY TO BEGIN",
+// "SYSTEM STANDBY", the trailer-type tags) is drawn by CSS from a data-text
+// attribute (.deco-text in src/styles.css) and hidden from screen readers.
+// People see exactly what they saw before; crawlers and AI agents, which read
+// the HTML text, get the real content without the flavor mixed into it.
+// Keep any new flavor text on this pattern.
+
 function TerminalHeader({ label, prefix }: { label: string; prefix: string }) {
   return (
     <div className="flex flex-col items-start gap-3">
       {prefix && (
-        <span className="font-mono text-xs sm:text-sm tracking-[0.3em] text-[#00ff41]">
-          &gt; {prefix}
-        </span>
+        <span
+          aria-hidden="true"
+          data-text={`> ${prefix}`}
+          className="deco-text font-mono text-xs sm:text-sm tracking-[0.3em] text-[#00ff41]"
+        />
       )}
       <h2 className="text-5xl sm:text-6xl md:text-7xl font-extrabold uppercase tracking-tight text-white">
         {label}
@@ -216,13 +225,17 @@ function Index() {
           <div className="mb-8 font-mono text-sm sm:text-base md:text-lg tracking-[0.4em] text-[#00ff41] glow-green">
             NG+ GAME TRAILERS
           </div>
-          {/* Visual hero line. Deliberately NOT the h1: "PRESS ANY KEY TO
-              BEGIN" tells search engines nothing about what this business
-              does, so the descriptive tagline below carries the h1 instead.
+          {/* Visual hero line. Deliberately NOT the h1, and drawn as
+              .deco-text: "PRESS ANY KEY TO BEGIN" tells search engines and AI
+              agents nothing about what this business does, so it stays out of
+              the page text and the descriptive tagline below carries the h1.
               Tailwind preflight resets heading font-size/weight/margins, so
               the tag swap renders pixel-identically. */}
-          <div className="text-4xl sm:text-5xl md:text-6xl font-extrabold uppercase tracking-tight text-white glow-green">
-            PRESS ANY KEY TO BEGIN
+          <div
+            aria-hidden="true"
+            data-text="PRESS ANY KEY TO BEGIN"
+            className="deco-text text-4xl sm:text-5xl md:text-6xl font-extrabold uppercase tracking-tight text-white glow-green"
+          >
             <span className="ml-2 inline-block w-4 h-[0.9em] bg-[#00ff41] align-middle animate-blink" />
           </div>
           <h1 className="mx-auto mt-8 max-w-2xl text-base sm:text-lg text-white/70">
@@ -245,10 +258,12 @@ function Index() {
         </div>
 
         <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2">
-          <span className="font-mono text-[10px] tracking-[0.4em] text-[#00ff41] animate-pulse-green">
-            {started ? "SYSTEM ACTIVE" : "SYSTEM STANDBY"}
-          </span>
-          <span className="animate-bounce-down text-[#00ff41]">▼</span>
+          <span
+            aria-hidden="true"
+            data-text={started ? "SYSTEM ACTIVE" : "SYSTEM STANDBY"}
+            className="deco-text font-mono text-[10px] tracking-[0.4em] text-[#00ff41] animate-pulse-green"
+          />
+          <span aria-hidden="true" className="animate-bounce-down text-[#00ff41]">▼</span>
         </div>
       </section>
 
@@ -257,15 +272,18 @@ function Index() {
         <div className="mx-auto max-w-7xl">
           <TerminalHeader label="Our Work" prefix="OUR_WORK_SELECTED" />
           <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* tag = the on-card terminal label (drawn by CSS); kind = the same
+                fact in plain words, read by crawlers and screen readers inside
+                the h3. Keep the two in step. */}
             {[
-              { img: work1, title: "Before Your Eyes", result: "", tag: "LAUNCH_TRAILER", video: beforeYourEyesTrailer },
-              { img: work2, title: "Manifold Garden", result: "", tag: "SWITCH_TRAILER", video: manifoldGardenTrailer as string | null },
-              { img: work3, title: "Fields of Mistria", result: "", tag: "WHOLESOME_DIRECT_TRAILER", video: fieldsOfMistriaTrailer as string | null },
-              { img: work4, title: "Pacific Drive", result: "", tag: "UPDATE_TRAILER", video: pacificDriveTrailer as string | null },
+              { img: work1, title: "Before Your Eyes", result: "", tag: "LAUNCH_TRAILER", kind: "launch trailer", video: beforeYourEyesTrailer },
+              { img: work2, title: "Manifold Garden", result: "", tag: "SWITCH_TRAILER", kind: "Switch trailer", video: manifoldGardenTrailer as string | null },
+              { img: work3, title: "Fields of Mistria", result: "", tag: "WHOLESOME_DIRECT_TRAILER", kind: "Wholesome Direct trailer", video: fieldsOfMistriaTrailer as string | null },
+              { img: work4, title: "Pacific Drive", result: "", tag: "UPDATE_TRAILER", kind: "update trailer", video: pacificDriveTrailer as string | null },
             ].map((p) => (
               <article key={p.title} className="group relative overflow-hidden border border-white/10 bg-black cursor-pointer" onClick={() => p.video && setActiveVideo(p.video)}>
                 <div className="relative aspect-video overflow-hidden">
-                  <img src={p.img} alt={p.title} loading="lazy" width={1280} height={720} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                  <img src={p.img} alt={`${p.title} ${p.kind}`} loading="lazy" width={1280} height={720} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
                   {p.video && (
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300 bg-black/40">
@@ -274,12 +292,17 @@ function Index() {
                       </div>
                     </div>
                   )}
-                  <div className="absolute top-4 left-4 font-mono text-[10px] tracking-[0.3em] text-[#131313] bg-[#00ff41] border border-[#00ff41] px-2 py-1 font-bold">
-                    {p.tag}
-                  </div>
+                  <div
+                    aria-hidden="true"
+                    data-text={p.tag}
+                    className="deco-text absolute top-4 left-4 font-mono text-[10px] tracking-[0.3em] text-[#131313] bg-[#00ff41] border border-[#00ff41] px-2 py-1 font-bold"
+                  />
                 </div>
                 <div className="flex items-center justify-between border-t border-white/10 px-6 py-5">
-                  <h3 className="text-xl font-bold uppercase tracking-wide text-white">{p.title}</h3>
+                  <h3 className="text-xl font-bold uppercase tracking-wide text-white">
+                    {p.title}
+                    <span className="sr-only"> &mdash; {p.kind}</span>
+                  </h3>
                   {p.result && <span className="font-mono text-xs tracking-[0.2em] text-[#00ff41]">// {p.result}</span>}
                 </div>
               </article>
@@ -295,9 +318,11 @@ function Index() {
           <p className="mt-8 max-w-2xl text-lg text-white/70">
             Let us help you be in the right place at the right time.
           </p>
+          {/* Same five services and copy as SERVICES in src/routes/__root.tsx
+              (the Organization JSON-LD). Change both or neither. */}
           <div className="mt-16 grid grid-cols-2 md:grid-cols-5 gap-px bg-white/10">
             {[
-              { Icon: Clapperboard, label: "Steam Page Trailers", copy: "Optimized for the \u201Cscroll-and-watch\u201D behavior of Steam users." },
+              { Icon: Clapperboard, label: "Steam Page Trailers", copy: "Optimized for the “scroll-and-watch” behavior of Steam users." },
               { Icon: Rocket, label: "Reveal & Launch", copy: "High-impact pieces designed to get attention and drive wishlists/sales." },
               { Icon: PartyPopper, label: "Festival Cuts", copy: "Snappy edits for showcase Steam events and seasonal fests." },
               { Icon: Target, label: "Publisher Pitch", copy: "Videos that prove your mechanics, loop, and market viability." },
@@ -327,6 +352,9 @@ function Index() {
               </p>
               <p>
                 We treat every project like a New Game Plus run — sharper, faster, with everything we&apos;ve learned carried forward.
+              </p>
+              <p>
+                Based in Vancouver, Canada. Working with indie teams worldwide.
               </p>
             </div>
           </div>

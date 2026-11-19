@@ -1,9 +1,29 @@
 # NG+ Game Trailers
 
-> Boutique trailer studio crafting high-impact game trailers for solo devs and indie teams.
+> Vancouver-based trailer studio making game trailers for solo developers and indie teams: Steam page trailers, reveal and launch trailers, festival cuts and publisher pitch videos.
 
-NG+ Game Trailers partners with indie studios to produce launch trailers, gameplay reveals, and festival cuts that drive wishlists and press coverage.
+NG+ Game Trailers (also written NG+ Trailers) is a boutique trailer studio in Vancouver, Canada, working with indie teams worldwide. It turns hundreds of hours of gameplay into short trailers built to drive Steam wishlists and sales.
+
+## Services
+
+- Steam page trailers: optimized for the scroll-and-watch behavior of Steam users.
+- Reveal and launch trailers: high-impact pieces designed to get attention and drive wishlists and sales.
+- Festival cuts: snappy edits for Steam showcase events and seasonal fests.
+- Publisher pitch videos: videos that prove a game's mechanics, loop and market viability.
+- Trailer strategy: analysis of a game's hooks and the best way to frame them.
+
+## Work
+
+- Before Your Eyes: launch trailer
+- Manifold Garden: Switch trailer
+- Fields of Mistria: Wholesome Direct trailer
+- Pacific Drive: update trailer
+
+## Contact
+
+- Email: hello@ngplustrailers.com
+- Project enquiries: https://ngplustrailers.com/#contact
 
 ## Pages
 
-- [Home](/): Overview of services, featured trailer work, and contact form.
+- [Home](https://ngplustrailers.com/): services, featured trailer work and the project enquiry form.
