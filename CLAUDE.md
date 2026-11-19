@@ -111,7 +111,7 @@ plumbing (`@lovable.dev/vite-tanstack-config`, the `__l5e` asset-folder naming,
   MP4. If buffering comes back at these bitrates, the next step is adaptive HLS
   off-box (Bunny Stream ≈ $1/mo), not a higher bitrate here.
 
-## AI search visibility (started Nov 18 2026)
+## AI search visibility (started Nov 18 2026, homepage pass live Nov 19)
 
 - Goal: get the site returned by AI tools for "make a game trailer" and
   "Steam trends" questions. Where they look: Claude's web search runs on Brave
@@ -152,7 +152,23 @@ plumbing (`@lovable.dev/vite-tanstack-config`, the `__l5e` asset-folder naming,
   and the five services as an OfferCatalog, WebSite JSON-LD linked to it,
   `.deco-text` flavor cleanup, trailer types in plain words, "Based in
   Vancouver, Canada. Working with indie teams worldwide." in About, refreshed
-  llms.txt, sitemap lastmod.
+  llms.txt, sitemap lastmod. Deployed Nov 19 2026 at 09:47 PT (commit 355fa85)
+  and verified live on both the apex and www.
+- Verifying a deploy: trust deploy.ps1's server listing (index.html size and
+  time) and this check from Brian's machine — both lines should show the new
+  title. Do NOT treat Claude's WebFetch as proof of what is live: on Nov 19 it
+  kept returning the pre-deploy page for several minutes after the deploy had
+  landed, even for cache-busting `?v=` URLs and for www, and Claude wrongly
+  reported the upload as failed.
+
+  ```powershell
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  foreach ($u in 'https://ngplustrailers.com/', 'https://www.ngplustrailers.com/') {
+    $h = (Invoke-WebRequest $u -UseBasicParsing -Headers @{ 'Cache-Control' = 'no-cache' }).Content
+    $t = [regex]::Match($h, '<title>(.*?)</title>').Groups[1].Value
+    '{0,-34} {1} | Vancouver line: {2}' -f $u, $t, ($h -match 'Based in Vancouver')
+  }
+  ```
 
 ## Conventions
 
@@ -180,8 +196,11 @@ plumbing (`@lovable.dev/vite-tanstack-config`, the `__l5e` asset-folder naming,
   deploy.ps1 probe.
 - `public/og-image.png` is 830 KB; resize to 1200×630.
 - Submit `sitemap.xml` in Search Console (verification token is in `<head>`).
-- Old video masters left on the server after the Nov 6 media deploy can be
-  deleted once the edge cache has rolled (see the ssh cleanup in that session).
+- Old video files left on the server after the Nov 6 media deploy can be
+  deleted (see the ssh cleanup in that session). deploy.ps1 reports 16 remote
+  media files against 11 local; the 5 extras are most likely the five videos
+  superseded by the `.v2` encodes. Its media-count WARN is expected until they
+  are gone.
 - AI visibility, next steps: Bing Webmaster Tools (import from Search Console;
   its AI Performance report shows Copilot citations) + an IndexNow ping after
   each deploy; a pricing page (waits on Brian's call on publishing the $5,000
